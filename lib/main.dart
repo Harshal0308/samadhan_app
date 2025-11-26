@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:samadhan_app/pages/login_page.dart';
 import 'package:samadhan_app/pages/main_dashboard_page.dart';
+import 'package:samadhan_app/pages/center_selection_page.dart';
 import 'package:samadhan_app/providers/auth_provider.dart';
 import 'package:samadhan_app/providers/student_provider.dart';
 import 'package:samadhan_app/providers/attendance_provider.dart';
@@ -76,7 +77,7 @@ class MyApp extends StatelessWidget {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           locale: Locale(userProvider.userSettings.language.toLowerCase().substring(0, 2)), // Set locale from provider
-          home: auth.isAuthenticated ? const MainDashboardPage() : const LoginPage(),
+          home: auth.isAuthenticated ? const CenterSelectionPage() : const LoginPage(),
         ),
       ),
     );

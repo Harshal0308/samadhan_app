@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:samadhan_app/providers/student_provider.dart';
 import 'package:samadhan_app/providers/volunteer_provider.dart';
 import 'package:samadhan_app/providers/user_provider.dart';
+import 'package:intl/intl.dart';
 
 class EditVolunteerReportPage extends StatefulWidget {
   final VolunteerReport report;
@@ -32,14 +33,53 @@ class _EditVolunteerReportPageState extends State<EditVolunteerReportPage> {
     final studentProvider = Provider.of<StudentProvider>(context, listen: false);
     _volunteerName = widget.report.volunteerName;
     _selectedClassBatch = widget.report.classBatch;
-    _inTime = TimeOfDay(hour: int.parse(widget.report.inTime.split(':')[0]), minute: int.parse(widget.report.inTime.split(':')[1]));
-    _outTime = TimeOfDay(hour: int.parse(widget.report.outTime.split(':')[0]), minute: int.parse(widget.report.outTime.split(':')[1]));
+
+    // Robust parsing for _inTime
+    try {
+      final parts = widget.report.inTime.split(':');
+      _inTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+    } catch (e) {
+      try {
+        final dateTime = DateFormat('h:mm a').parse(widget.report.inTime);
+        _inTime = TimeOfDay(hour: dateTime.hour, minute: dateTime.minute);
+      } catch (e2) {
+        print('Warning: Could not parse inTime string "${widget.report.inTime}". Error: $e2');
+        _inTime = TimeOfDay.now(); // Fallback
+      }
+    }
+
+    // Robust parsing for _outTime
+    try {
+      final parts = widget.report.outTime.split(':');
+      _outTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+    } catch (e) {
+      try {
+        final dateTime = DateFormat('h:mm a').parse(widget.report.outTime);
+        _outTime = TimeOfDay(hour: dateTime.hour, minute: dateTime.minute);
+      } catch (e2) {
+        print('Warning: Could not parse outTime string "${widget.report.outTime}". Error: $e2');
+        _outTime = TimeOfDay.now(); // Fallback
+      }
+    }
+
     _activityTaught = widget.report.activityTaught;
     _testConducted = widget.report.testConducted;
     _testTopic = widget.report.testTopic;
     _marksGrade = widget.report.marksGrade;
     _selectedStudents = widget.report.selectedStudents;
-    _classBatches = ['All', ...studentProvider.students.map((s) => s.classBatch).toSet().toList()];
+    // Collect all unique class batches from students
+    final Set<String> uniqueClassBatches = studentProvider.students.map((s) => s.classBatch).toSet();
+    
+    // Add 'All' as a general option
+    uniqueClassBatches.add('All');
+
+    // Add the current report's classBatch to ensure it's in the list
+    if (widget.report.classBatch != null && widget.report.classBatch.isNotEmpty) {
+      uniqueClassBatches.add(widget.report.classBatch);
+    }
+
+    _classBatches = uniqueClassBatches.toList();
+    _classBatches.sort(); // Optional: sort for better display
   }
   
   Future<void> _selectTime(BuildContext context, bool isStartTime) async {

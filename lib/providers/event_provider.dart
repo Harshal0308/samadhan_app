@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sembast/sembast.dart';
 import 'package:samadhan_app/services/database_service.dart';
+import 'package:intl/intl.dart';
 
 class Event {
   final int id;
@@ -22,15 +23,29 @@ class Event {
   });
 
   factory Event.fromMap(Map<String, dynamic> map, int id) {
+    TimeOfDay parsedTime;
+    try {
+      // Try parsing as HH:MM (e.g., "15:30")
+      final parts = map['time'].split(':');
+      parsedTime = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+    } catch (e) {
+      // If HH:MM fails, try parsing as h:mm a (e.g., "3:30 PM")
+      try {
+        final dateTime = DateFormat('h:mm a').parse(map['time']);
+        parsedTime = TimeOfDay(hour: dateTime.hour, minute: dateTime.minute);
+      } catch (e2) {
+        // Fallback or rethrow if even 'h:mm a' fails
+        print('Warning: Could not parse time string "${map['time']}". Error: $e2');
+        parsedTime = TimeOfDay.now(); // Fallback to current time
+      }
+    }
+
     return Event(
       id: id,
       title: map['title'] as String,
       description: map['description'] as String,
       date: DateTime.parse(map['date'] as String),
-      time: TimeOfDay(
-        hour: int.parse(map['time'].split(':')[0]),
-        minute: int.parse(map['time'].split(':')[1]),
-      ),
+      time: parsedTime,
       attendanceSummary: map['attendanceSummary'] as String,
       photoPaths: List<String>.from(map['photoPaths'] as List),
     );
@@ -41,7 +56,7 @@ class Event {
       'title': title,
       'description': description,
       'date': date.toIso8601String(),
-      'time': '${time.hour}:${time.minute}',
+      'time': '${time.hour}:${time.minute}', // Always store in HH:MM format
       'attendanceSummary': attendanceSummary,
       'photoPaths': photoPaths,
     };

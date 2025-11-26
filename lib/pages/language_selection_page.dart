@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:samadhan_app/pages/center_selection_page.dart';
+import 'package:samadhan_app/providers/user_provider.dart';
 
 class LanguageSelectionPage extends StatefulWidget {
   const LanguageSelectionPage({super.key});
@@ -9,7 +11,13 @@ class LanguageSelectionPage extends StatefulWidget {
 }
 
 class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
-  String? _selectedLanguage; // To hold the currently selected language
+  String? _selectedLanguage;
+
+  static const Map<String, String> _languageToCode = {
+    'English': 'en',
+    'Hindi': 'hi',
+    'Marathi': 'mr',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +26,7 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            Navigator.pop(context); // Go back to the previous page (Login Page)
+            Navigator.pop(context);
           },
         ),
         title: const Text('Choose Language'),
@@ -41,12 +49,12 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
   Widget _buildLanguageButton(BuildContext context, String language) {
     bool isSelected = _selectedLanguage == language;
     return SizedBox(
-      width: 200, // Make buttons larger
+      width: 200,
       height: 60,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: isSelected
-              ? Theme.of(context).colorScheme.primary // Highlight selected
+              ? Theme.of(context).colorScheme.primary
               : Theme.of(context).colorScheme.secondaryContainer,
           foregroundColor: isSelected
               ? Theme.of(context).colorScheme.onPrimary
@@ -57,15 +65,16 @@ class _LanguageSelectionPageState extends State<LanguageSelectionPage> {
           textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         onPressed: () {
+          final languageCode = _languageToCode[language];
+          if (languageCode == null) return; 
+
           setState(() {
             _selectedLanguage = language;
           });
-          // TODO: Implement logic to save selected language
-          print('Selected Language: $language');
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const CenterSelectionPage()),
-          );
+
+          Provider.of<UserProvider>(context, listen: false).updateLanguage(languageCode);
+          
+          Navigator.pop(context);
         },
         child: Text(language),
       ),
