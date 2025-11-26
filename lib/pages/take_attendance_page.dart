@@ -35,8 +35,8 @@ class _TakeAttendancePageState extends State<TakeAttendancePage> {
     });
   }
 
-  Future<void> _pickImageAndRecognize() async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.camera, imageQuality: 50);
+  Future<void> _pickImage(ImageSource source) async {
+    final XFile? image = await _picker.pickImage(source: source, imageQuality: 50);
 
     if (image != null) {
       setState(() {
@@ -160,10 +160,21 @@ class _TakeAttendancePageState extends State<TakeAttendancePage> {
                     if (_pickedImage != null)
                       Image.file(_pickedImage!, height: 120, fit: BoxFit.cover),
                     const SizedBox(height: 10),
-                    ElevatedButton.icon(
-                      onPressed: syncProvider.isOnline ? _pickImageAndRecognize : null,
-                      icon: const Icon(Icons.camera_alt),
-                      label: const Text('Add Group Photo (Online)'),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: syncProvider.isOnline ? () => _pickImage(ImageSource.camera) : null,
+                          icon: const Icon(Icons.camera_alt),
+                          label: const Text('Take Photo'),
+                        ),
+                        const SizedBox(width: 20),
+                        ElevatedButton.icon(
+                          onPressed: syncProvider.isOnline ? () => _pickImage(ImageSource.gallery) : null,
+                          icon: const Icon(Icons.photo_library),
+                          label: const Text('From Gallery'),
+                        ),
+                      ],
                     ),
                     if (!syncProvider.isOnline)
                       const Padding(

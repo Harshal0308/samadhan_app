@@ -64,7 +64,7 @@ class StudentProvider with ChangeNotifier {
   Future<void> deleteMultipleStudents(List<int> ids) async {
     final db = await _dbService.database;
     await db.transaction((txn) async {
-      await _studentStore.delete(txn, finder: Finder(filter: Filter.byKey(ids)));
+      await _studentStore.delete(txn, finder: Finder(filter: Filter.inList(Field.key, ids)));
     });
     await fetchStudents();
   }

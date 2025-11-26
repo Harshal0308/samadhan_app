@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Import for FilteringTextInputFormatter
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:samadhan_app/providers/student_provider.dart';
@@ -18,8 +19,8 @@ class _AddStudentPageState extends State<AddStudentPage> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _rollNoController = TextEditingController();
-  String? _selectedClassBatch;
-  final List<String> _classBatches = ['Class 1', 'Class 2', 'Class 3', 'Batch A', 'Batch B'];
+  String? _selectedClass;
+  final List<String> _classes = List.generate(12, (index) => (index + 1).toString());
 
   final List<File?> _photoFiles = List.filled(5, null);
   final ImagePicker _picker = ImagePicker();
@@ -50,8 +51,21 @@ class _AddStudentPageState extends State<AddStudentPage> {
         final newStudent = await studentProvider.addStudent(
           name: _nameController.text,
           rollNo: _rollNoController.text,
-          classBatch: _selectedClassBatch!,
+          classBatch: _selectedClass!,
         );
+
+        if (newStudent == null) {
+          // Handle duplicate roll number case
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('This roll number is already assigned in this class.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return; // Stop execution
+        }
 
         offlineSyncProvider.addPendingChange();
 
@@ -111,6 +125,8 @@ class _AddStudentPageState extends State<AddStudentPage> {
 
   @override
   Widget build(BuildContext context) {
+    final studentProvider = Provider.of<StudentProvider>(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Add New Student'),
@@ -125,6 +141,7 @@ class _AddStudentPageState extends State<AddStudentPage> {
         padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
           child: ListView(
             children: [
               TextFormField(
@@ -132,9 +149,45 @@ class _AddStudentPageState extends State<AddStudentPage> {
                 decoration: const InputDecoration(
                   labelText: 'Student Name',
                 ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s]')), // Allow letters and spaces
+                ],
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter student name';
+                  }
+
+                  // Only letters and spaces allowed
+                  final nameRegex = RegExp(r'^[a-zA-Z ]+$');
+                  if (!nameRegex.hasMatch(value)) {
+                    return 'Only letters and spaces allowed';
+                  }
+
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                decoration: const InputDecoration(
+                  labelText: 'Class',
+                ),
+                value: _selectedClass,
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _selectedClass = newValue;
+                  });
+                  // Trigger validation for other fields when class changes
+                  _formKey.currentState?.validate();
+                },
+                items: _classes.map<DropdownMenuItem<String>>((String value) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(value),
+                  );
+                }).toList(),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please select a class';
                   }
                   return null;
                 },
@@ -145,34 +198,34 @@ class _AddStudentPageState extends State<AddStudentPage> {
                 decoration: const InputDecoration(
                   labelText: 'Roll Number',
                 ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly, // Allow only digits
+                ],
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter roll number';
                   }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
-                  labelText: 'Class/Batch',
-                ),
-                value: _selectedClassBatch,
-                onChanged: (String? newValue) {
-                  setState(() {
-                    _selectedClassBatch = newValue;
-                  });
-                },
-                items: _classBatches.map<DropdownMenuItem<String>>((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(value),
-                  );
-                }).toList(),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please select a class/batch';
+
+                  if (value.contains(' ')) {
+                    return 'Roll number cannot contain spaces';
                   }
+
+                  final digitRegex = RegExp(r'^[0-9]+$');
+                  if (!digitRegex.hasMatch(value)) {
+                    return 'Roll number must contain digits only';
+                  }
+
+                  // Check unique roll number in selected class
+                  if (_selectedClass != null) {
+                    final studentsInClass = studentProvider.students
+                        .where((s) => s.classBatch == _selectedClass);
+
+                    if (studentsInClass.any((s) => s.rollNo == value)) {
+                      return 'This roll number is already assigned in this class';
+                    }
+                  }
+
                   return null;
                 },
               ),

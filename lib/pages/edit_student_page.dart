@@ -1,11 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:samadhan_app/providers/student_provider.dart';
 import 'package:samadhan_app/providers/notification_provider.dart';
 import 'package:samadhan_app/services/face_recognition_service.dart';
-import 'package:samadhan_app/providers/offline_sync_provider.dart'; // New import
+import 'package:samadhan_app/providers/offline_sync_provider.dart';
 
 class EditStudentPage extends StatefulWidget {
   final Student student;
@@ -20,8 +21,8 @@ class _EditStudentPageState extends State<EditStudentPage> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _nameController;
   late TextEditingController _rollNoController;
-  String? _selectedClassBatch;
-  final List<String> _classBatches = ['Class 1', 'Class 2', 'Class 3', 'Batch A', 'Batch B'];
+  String? _selectedClass;
+  final List<String> _classes = List.generate(12, (index) => (index + 1).toString());
 
   final List<File?> _photoFiles = List.filled(5, null);
   final ImagePicker _picker = ImagePicker();
@@ -32,7 +33,7 @@ class _EditStudentPageState extends State<EditStudentPage> {
     super.initState();
     _nameController = TextEditingController(text: widget.student.name);
     _rollNoController = TextEditingController(text: widget.student.rollNo);
-    _selectedClassBatch = widget.student.classBatch;
+    _selectedClass = widget.student.classBatch;
   }
 
   Future<void> _pickImage(int index) async {
@@ -61,7 +62,7 @@ class _EditStudentPageState extends State<EditStudentPage> {
           id: widget.student.id,
           name: _nameController.text,
           rollNo: _rollNoController.text,
-          classBatch: _selectedClassBatch!,
+          classBatch: _selectedClass!,
         );
 
         await studentProvider.updateStudent(updatedStudent);
@@ -124,6 +125,8 @@ class _EditStudentPageState extends State<EditStudentPage> {
 
   @override
   Widget build(BuildContext context) {
+    final studentProvider = Provider.of<StudentProvider>(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Edit Student'),
@@ -138,6 +141,7 @@ class _EditStudentPageState extends State<EditStudentPage> {
         padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
           child: ListView(
             children: [
               TextFormField(
@@ -145,9 +149,40 @@ class _EditStudentPageState extends State<EditStudentPage> {
                 decoration: const InputDecoration(
                   labelText: 'Student Name',
                 ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s]')),
+                ],
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter student name';
+                  }
+                  if (!RegExp(r'^[a-zA-Z\s]+$').hasMatch(value)) {
+                    return 'Only letters and spaces are allowed';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                decoration: const InputDecoration(
+                  labelText: 'Class',
+                ),
+                value: _selectedClass,
+                onChanged: (String? newValue) {
+                  setState(() {
+                    _selectedClass = newValue;
+                  });
+                  _formKey.currentState?.validate();
+                },
+                items: _classes.map<DropdownMenuItem<String>>((String value) {
+                  return DropdownMenuItem<String>(
+                    value: value,
+                    child: Text(value),
+                  );
+                }).toList(),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please select a class';
                   }
                   return null;
                 },
@@ -158,33 +193,26 @@ class _EditStudentPageState extends State<EditStudentPage> {
                 decoration: const InputDecoration(
                   labelText: 'Roll Number',
                 ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                ],
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter roll number';
                   }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
-                  labelText: 'Class/Batch',
-                ),
-                value: _selectedClassBatch,
-                onChanged: (String? newValue) {
-                  setState(() {
-                    _selectedClassBatch = newValue;
-                  });
-                },
-                items: _classBatches.map<DropdownMenuItem<String>>((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(value),
-                  );
-                }).toList(),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please select a class/batch';
+                  if (value.contains(' ')) {
+                    return 'Roll number cannot contain spaces';
+                  }
+                  if (int.tryParse(value) == null) {
+                    return 'Please enter a valid number';
+                  }
+                  if (_selectedClass != null) {
+                    final studentsInClass = studentProvider.students
+                        .where((s) => s.classBatch == _selectedClass);
+                    if (studentsInClass.any((s) => s.rollNo == value && s.id != widget.student.id)) {
+                      return 'This roll number is already assigned in this class';
+                    }
                   }
                   return null;
                 },

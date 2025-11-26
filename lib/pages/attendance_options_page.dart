@@ -60,7 +60,7 @@ class AttendanceOptionsPage extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Text('Take Attendance (AI + Manual)'),
+                child: const Text('Take Attendance'),
               ),
             ),
             const SizedBox(height: 20),
@@ -84,27 +84,7 @@ class AttendanceOptionsPage extends StatelessWidget {
                 child: const Text('View Today\'s Attendance'),
               ),
             ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: 250,
-              height: 60,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => ViewAttendancePage(initialDate: DateTime.now())),
-                  );
-                  print('View Attendance History button pressed');
-                },
-                style: ElevatedButton.styleFrom(
-                  textStyle: const TextStyle(fontSize: 18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text('View Attendance History'),
-              ),
-            ),
+
           ],
         ),
       ),

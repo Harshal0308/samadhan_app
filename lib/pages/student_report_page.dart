@@ -16,26 +16,17 @@ class StudentReportPage extends StatefulWidget {
 class _StudentReportPageState extends State<StudentReportPage> {
   final TextEditingController _searchController = TextEditingController();
   String? _selectedFilterClassBatch;
-  List<Student> _filteredStudents = [];
   bool _isSelectionMode = false;
   List<int> _selectedStudentIds = [];
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _filterStudents();
-  }
-
-  void _filterStudents() {
+  List<Student> _getFilteredStudents(BuildContext context) {
     final studentProvider = Provider.of<StudentProvider>(context);
     List<Student> students = studentProvider.students;
-    setState(() {
-      _filteredStudents = students.where((student) {
-        final matchesSearch = student.name.toLowerCase().contains(_searchController.text.toLowerCase());
-        final matchesFilter = _selectedFilterClassBatch == null || _selectedFilterClassBatch == 'All' || student.classBatch == _selectedFilterClassBatch;
-        return matchesSearch && matchesFilter;
-      }).toList();
-    });
+    return students.where((student) {
+      final matchesSearch = student.name.toLowerCase().contains(_searchController.text.toLowerCase());
+      final matchesFilter = _selectedFilterClassBatch == null || _selectedFilterClassBatch == 'All' || student.classBatch == _selectedFilterClassBatch;
+      return matchesSearch && matchesFilter;
+    }).toList();
   }
 
   void _toggleSelection(int studentId) {
@@ -104,8 +95,9 @@ class _StudentReportPageState extends State<StudentReportPage> {
   @override
   Widget build(BuildContext context) {
     final studentProvider = Provider.of<StudentProvider>(context);
-    final allClassBatches = ['All', ...studentProvider.students.map((s) => s.classBatch).toSet().toList()];
+    final allClassBatches = ['All', ...studentProvider.students.map((s) => s.classBatch)].toSet().toList();
     final l10n = AppLocalizations.of(context)!;
+    final _filteredStudents = _getFilteredStudents(context);
 
     return Scaffold(
       appBar: _isSelectionMode
@@ -133,7 +125,7 @@ class _StudentReportPageState extends State<StudentReportPage> {
                 labelText: l10n.searchStudents,
                 prefixIcon: const Icon(Icons.search),
               ),
-              onChanged: (value) => _filterStudents(),
+              onChanged: (value) => setState(() {}),
             ),
           ),
           Padding(
@@ -146,7 +138,6 @@ class _StudentReportPageState extends State<StudentReportPage> {
               onChanged: (String? newValue) {
                 setState(() {
                   _selectedFilterClassBatch = newValue;
-                  _filterStudents();
                 });
               },
               items: allClassBatches.map<DropdownMenuItem<String>>((String value) {
@@ -158,65 +149,65 @@ class _StudentReportPageState extends State<StudentReportPage> {
             ),
           ),
           Expanded(
-            child: Consumer<StudentProvider>(builder: (context, studentProvider, child) {
-              return ListView.builder(
-                itemCount: _filteredStudents.length,
-                itemBuilder: (context, index) {
-                  final student = _filteredStudents[index];
-                  final isSelected = _selectedStudentIds.contains(student.id);
-                  return Card(
-                    color: isSelected ? Colors.blue.shade100 : null,
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: ListTile(
-                      leading: _isSelectionMode
-                          ? Icon(isSelected ? Icons.check_circle : Icons.radio_button_unchecked)
-                          : const Icon(Icons.person),
-                      title: Text(student.name),
-                      subtitle: Text('Roll No: ${student.rollNo}, Class: ${student.classBatch}'),
-                      trailing: _isSelectionMode
-                          ? null
-                          : Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit, color: Colors.blue),
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => EditStudentPage(student: student),
-                                      ),
-                                    ).then((_) => _filterStudents());
-                                  },
+            child: _filteredStudents.isEmpty
+                ? const Center(child: Text('No such student'))
+                : ListView.builder(
+                    itemCount: _filteredStudents.length,
+                    itemBuilder: (context, index) {
+                      final student = _filteredStudents[index];
+                      final isSelected = _selectedStudentIds.contains(student.id);
+                      return Card(
+                        color: isSelected ? Colors.blue.shade100 : null,
+                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: ListTile(
+                          leading: _isSelectionMode
+                              ? Icon(isSelected ? Icons.check_circle : Icons.radio_button_unchecked)
+                              : const Icon(Icons.person),
+                          title: Text(student.name),
+                          subtitle: Text('Roll No: ${student.rollNo}, Class: ${student.classBatch}'),
+                          trailing: _isSelectionMode
+                              ? null
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, color: Colors.blue),
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) => EditStudentPage(student: student),
+                                          ),
+                                        ).then((_) => setState(() {}));
+                                      },
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete, color: Colors.red),
+                                      onPressed: () => _showDeleteConfirmation(student.id),
+                                    ),
+                                  ],
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red),
-                                  onPressed: () => _showDeleteConfirmation(student.id),
+                          onTap: () {
+                            if (_isSelectionMode) {
+                              _toggleSelection(student.id);
+                            } else {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => StudentDetailedReportPage(student: student),
                                 ),
-                              ],
-                            ),
-                      onTap: () {
-                        if (_isSelectionMode) {
-                          _toggleSelection(student.id);
-                        } else {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => StudentDetailedReportPage(student: student),
-                            ),
-                          );
-                        }
-                      },
-                      onLongPress: () {
-                        if (!_isSelectionMode) {
-                          _enterSelectionMode(student.id);
-                        }
-                      },
-                    ),
-                  );
-                },
-              );
-            }),
+                              );
+                            }
+                          },
+                          onLongPress: () {
+                            if (!_isSelectionMode) {
+                              _enterSelectionMode(student.id);
+                            }
+                          },
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -232,40 +223,39 @@ class _StudentReportPageState extends State<StudentReportPage> {
 
   Future<void> _showDeleteConfirmation(int studentId) async {
     final l10n = AppLocalizations.of(context)!;
-    final student = _filteredStudents.firstWhere((s) => s.id == studentId);
-    return showDialog<void>(
+    final studentProvider = Provider.of<StudentProvider>(context, listen: false);
+    final student = studentProvider.students.firstWhere((s) => s.id == studentId);
+    final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (BuildContext context) {
+      builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: Text(l10n.deleteStudent),
-          content: SingleChildScrollView(
-            child: ListBody(
-              children: <Widget>[
-                Text('${l10n.areYouSureYouWantToDelete} ${student.name}?'),
-              ],
-            ),
-          ),
+          content: Text('${l10n.areYouSureYouWantToDelete} ${student.name}?'),
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
             ),
             TextButton(
               child: const Text('Delete', style: TextStyle(color: Colors.red)),
-              onPressed: () {
-                Provider.of<StudentProvider>(context, listen: false).deleteStudent(student.id);
-                Provider.of<NotificationProvider>(context, listen: false).addNotification(
-                  title: 'Student Deleted',
-                  message: 'Student ${student.name} has been successfully deleted.',
-                  type: 'info',
-                );
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.of(dialogContext).pop(true),
             ),
           ],
         );
       },
     );
+
+    if (confirmed == true) {
+      await Provider.of<StudentProvider>(context, listen: false).deleteStudent(student.id);
+      Provider.of<NotificationProvider>(context, listen: false).addNotification(
+        title: 'Student Deleted',
+        message: 'Student ${student.name} has been successfully deleted.',
+        type: 'info',
+      );
+      if (mounted) {
+        setState(() {});
+      }
+    }
   }
 }
