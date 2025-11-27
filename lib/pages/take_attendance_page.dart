@@ -1,12 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:samadhan_app/providers/attendance_provider.dart';
 import 'package:samadhan_app/providers/student_provider.dart';
 import 'package:samadhan_app/services/face_recognition_service.dart';
 import 'package:samadhan_app/providers/notification_provider.dart';
-import 'package:samadhan_app/providers/offline_sync_provider.dart'; // New import
 
 class TakeAttendancePage extends StatefulWidget {
   const TakeAttendancePage({super.key});
@@ -36,46 +36,62 @@ class _TakeAttendancePageState extends State<TakeAttendancePage> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
-    final XFile? image = await _picker.pickImage(source: source, imageQuality: 50);
+    final XFile? imageFile = await _picker.pickImage(source: source, imageQuality: 80);
 
-    if (image != null) {
+    if (imageFile != null) {
       setState(() {
-        _pickedImage = File(image.path);
+        _pickedImage = File(imageFile.path);
         _isLoading = true;
         _errorMessage = null;
-        _autoMarkedPresentCount = 0;
         _recognizedStudentNames.clear();
+        _autoMarkedPresentCount = 0;
+        // Reset all to absent
         for (var s in _attendanceList) {
           s.isPresent = false;
         }
       });
 
       try {
-        final response = await _faceRecognitionService.recognizeFaces([_pickedImage!]);
+        final studentProvider = Provider.of<StudentProvider>(context, listen: false);
+        final studentsWithEmbeddings = studentProvider.students.where((s) => s.embedding != null && s.embedding!.isNotEmpty).toList();
 
-        if (response.containsKey('error')) {
-          setState(() {
-            _errorMessage = response['error'];
-          });
-        } else if (response.containsKey('results') && response['results'] is List && response['results'].isNotEmpty) {
-          final List<dynamic> recognizedNamesData = response['results'][0]['recognized_names'];
-          final List<String> detectedNames = recognizedNamesData.map((name) => name.toString()).toList();
+        final imageBytes = await _pickedImage!.readAsBytes();
+        final image = img.decodeImage(imageBytes);
 
+        if (image == null) {
+          throw Exception("Could not decode image");
+        }
+
+        final detectedFaces = await _faceRecognitionService.detectFaces(image);
+
+        if (detectedFaces.isEmpty) {
           setState(() {
-            _recognizedStudentNames = detectedNames;
-            _autoMarkedPresentCount = detectedNames.length;
-            for (var student in _attendanceList) {
-              if (detectedNames.contains(student.name)) {
-                student.isPresent = true;
-              }
-            }
+            _errorMessage = 'No faces detected in the image.';
           });
         } else {
-          _errorMessage = 'No faces were recognized.';
+          List<String> recognizedThisImage = [];
+          for (var face in detectedFaces) {
+            final embedding = _faceRecognitionService.getEmbedding(image, face.boundingBox);
+            if (embedding != null) {
+              final bestMatch = _faceRecognitionService.findBestMatch(embedding, studentsWithEmbeddings, 0.8); // Using a threshold of 0.8
+              if (bestMatch != null && !recognizedThisImage.contains(bestMatch.name)) {
+                recognizedThisImage.add(bestMatch.name);
+                final studentInList = _attendanceList.firstWhere((s) => s.id == bestMatch.id);
+                studentInList.isPresent = true;
+              }
+            }
+          }
+          setState(() {
+            _recognizedStudentNames = recognizedThisImage;
+            _autoMarkedPresentCount = recognizedThisImage.length;
+            if (recognizedThisImage.isEmpty) {
+              _errorMessage = 'No known students were recognized.';
+            }
+          });
         }
       } catch (e) {
         setState(() {
-          _errorMessage = 'An unexpected error occurred: $e';
+          _errorMessage = 'An error occurred during recognition: $e';
         });
       } finally {
         setState(() {
@@ -88,12 +104,10 @@ class _TakeAttendancePageState extends State<TakeAttendancePage> {
   Future<void> _saveAttendance() async {
     final attendanceProvider = Provider.of<AttendanceProvider>(context, listen: false);
     final notificationProvider = Provider.of<NotificationProvider>(context, listen: false);
-    final offlineSyncProvider = Provider.of<OfflineSyncProvider>(context, listen: false);
 
     final attendanceMap = {for (var student in _attendanceList) student.id: student.isPresent};
     
     await attendanceProvider.saveAttendance(attendanceMap);
-    offlineSyncProvider.addPendingChange();
 
     final presentCount = _attendanceList.where((s) => s.isPresent).length;
     final absentCount = _attendanceList.where((s) => !s.isPresent).length;
@@ -145,66 +159,57 @@ class _TakeAttendancePageState extends State<TakeAttendancePage> {
   }
 
   Widget _buildRecognitionSection() {
-    return Consumer<OfflineSyncProvider>(
-      builder: (context, syncProvider, child) {
-        return Expanded(
-          flex: 2,
-          child: Container(
-            color: Colors.grey[200],
-            padding: const EdgeInsets.all(16.0),
-            child: Center(
-              child: SingleChildScrollView(
-                child: Column(
+    return Expanded(
+      flex: 2,
+      child: Container(
+        color: Colors.grey[200],
+        padding: const EdgeInsets.all(16.0),
+        child: Center(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_pickedImage != null)
+                  Image.file(_pickedImage!, height: 120, fit: BoxFit.cover),
+                const SizedBox(height: 10),
+                Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    if (_pickedImage != null)
-                      Image.file(_pickedImage!, height: 120, fit: BoxFit.cover),
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: syncProvider.isOnline ? () => _pickImage(ImageSource.camera) : null,
-                          icon: const Icon(Icons.camera_alt),
-                          label: const Text('Take Photo'),
-                        ),
-                        const SizedBox(width: 20),
-                        ElevatedButton.icon(
-                          onPressed: syncProvider.isOnline ? () => _pickImage(ImageSource.gallery) : null,
-                          icon: const Icon(Icons.photo_library),
-                          label: const Text('From Gallery'),
-                        ),
-                      ],
+                    ElevatedButton.icon(
+                      onPressed: () => _pickImage(ImageSource.camera),
+                      icon: const Icon(Icons.camera_alt),
+                      label: const Text('Take Photo'),
                     ),
-                    if (!syncProvider.isOnline)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8.0),
-                        child: Text('Face recognition is available only when online.', style: TextStyle(color: Colors.grey)),
-                      ),
-                    if (_errorMessage != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8.0),
-                        child: Text(_errorMessage!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
-                      ),
-                    if (_recognizedStudentNames.isNotEmpty)
-                       Padding(
-                        padding: const EdgeInsets.only(top: 8.0),
-                        child: Text(
-                          '$_autoMarkedPresentCount Students Auto-Marked Present:',
-                          style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    Wrap(
-                      spacing: 8.0,
-                      children: _recognizedStudentNames.map((name) => Chip(label: Text(name))).toList(),
+                    const SizedBox(width: 20),
+                    ElevatedButton.icon(
+                      onPressed: () => _pickImage(ImageSource.gallery),
+                      icon: const Icon(Icons.photo_library),
+                      label: const Text('From Gallery'),
                     ),
                   ],
                 ),
-              ),
+                if (_errorMessage != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Text(_errorMessage!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+                  ),
+                if (_recognizedStudentNames.isNotEmpty)
+                   Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Text(
+                      '$_autoMarkedPresentCount Students Auto-Marked Present:',
+                      style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                Wrap(
+                  spacing: 8.0,
+                  children: _recognizedStudentNames.map((name) => Chip(label: Text(name))).toList(),
+                ),
+              ],
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 

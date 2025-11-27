@@ -74,12 +74,50 @@ class _NotificationCenterPageState extends State<NotificationCenterPage> {
             Navigator.pop(context);
           },
         ),
+        actions: [
+          Consumer<NotificationProvider>(
+            builder: (context, notificationProvider, child) {
+              if (notificationProvider.notifications.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              return IconButton(
+                icon: const Icon(Icons.clear_all),
+                tooltip: 'Clear All Notifications',
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Clear All Notifications?'),
+                      content: const Text('This will delete all notifications. This action cannot be undone.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            notificationProvider.clearAllNotifications();
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('All notifications cleared.')),
+                            );
+                          },
+                          child: const Text('Clear', style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ],
       ),
       body: Consumer<NotificationProvider>(
         builder: (context, notificationProvider, child) {
           final notifications = notificationProvider.notifications;
           if (notifications.isEmpty) {
-            return const Center(child: Text('No new notifications'));
+            return const Center(child: Text('No notifications'));
           }
           return ListView.builder(
             padding: const EdgeInsets.all(8.0),

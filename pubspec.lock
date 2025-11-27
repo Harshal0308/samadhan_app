@@ -101,18 +101,18 @@ packages:
     dependency: "direct main"
     description:
       name: connectivity_plus
-      sha256: "224a77051d52a11fbad53dd57827594d3bd24f945af28bd70bab376d68d437f0"
+      sha256: "33bae12a398f841c6cda09d1064212957265869104c478e5ad51e2fb26c3973c"
       url: "https://pub.dev"
     source: hosted
-    version: "5.0.2"
+    version: "7.0.0"
   connectivity_plus_platform_interface:
     dependency: transitive
     description:
       name: connectivity_plus_platform_interface
-      sha256: cf1d1c28f4416f8c654d7dc3cd638ec586076255d407cef3ddbdaf178272a71a
+      sha256: "42657c1715d48b167930d5f34d00222ac100475f73d10162ddf43e714932f204"
       url: "https://pub.dev"
     source: hosted
-    version: "1.2.4"
+    version: "2.0.1"
   convert:
     dependency: transitive
     description:
@@ -326,7 +326,7 @@ packages:
     source: hosted
     version: "4.1.2"
   image:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: image
       sha256: f31d52537dc417fdcde36088fdf11d191026fd5e4fae742491ebd40e5a8bea7d
@@ -413,14 +413,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.20.2"
-  js:
-    dependency: transitive
-    description:
-      name: js
-      sha256: f2c445dce49627136094980615a031419f7f3eb393237e4ecd97ac15dea343f3
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.6.7"
   json_annotation:
     dependency: transitive
     description:
@@ -617,10 +609,10 @@ packages:
     dependency: transitive
     description:
       name: path_provider_foundation
-      sha256: "97390a0719146c7c3e71b6866c34f1cde92685933165c1c671984390d2aca776"
+      sha256: "6d13aece7b3f5c5a9731eaf553ff9dcbc2eff41087fd2df587fd0fed9a3eb0c4"
       url: "https://pub.dev"
     source: hosted
-    version: "2.4.4"
+    version: "2.5.1"
   path_provider_linux:
     dependency: transitive
     description:
@@ -717,6 +709,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.2"
+  quiver:
+    dependency: transitive
+    description:
+      name: quiver
+      sha256: ea0b925899e64ecdfbf9c7becb60d5b50e706ade44a85b2363be2a22d88117d2
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.2.2"
   sembast:
     dependency: "direct main"
     description:
@@ -786,6 +786,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.7"
+  tflite_flutter:
+    dependency: "direct main"
+    description:
+      name: tflite_flutter
+      sha256: "0bba9040d8decda0960d7abf8eabf32243bf092bc7d0084e8e19681866b0bdbe"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.12.1"
   time:
     dependency: transitive
     description:

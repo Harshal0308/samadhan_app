@@ -50,10 +50,13 @@ class AttendanceProvider with ChangeNotifier {
 
   Future<List<AttendanceRecord>> fetchAttendanceRecordsByDateRange(DateTime startDate, DateTime endDate) async {
     final db = await _dbService.database;
+    // Normalize range to include entire days (inclusive)
+    final DateTime startOfDay = DateTime(startDate.year, startDate.month, startDate.day, 0, 0, 0);
+    final DateTime endOfDay = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59, 999);
     final Finder finder = Finder(
       filter: Filter.and([
-        Filter.greaterThanOrEquals('date', startDate.toIso8601String()),
-        Filter.lessThanOrEquals('date', endDate.toIso8601String()),
+        Filter.greaterThanOrEquals('date', startOfDay.toIso8601String()),
+        Filter.lessThanOrEquals('date', endOfDay.toIso8601String()),
       ]),
       sortOrders: [SortOrder('date', false)],
     );

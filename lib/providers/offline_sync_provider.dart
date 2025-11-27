@@ -8,7 +8,7 @@ class OfflineSyncProvider with ChangeNotifier {
   DateTime? _lastSyncTime;
   String _syncStatusMessage = "Checking connection...";
   bool _isOnline = false;
-  late StreamSubscription<ConnectivityResult> _connectivitySubscription;
+  late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
 
   int get pendingChanges => _pendingChanges;
   bool get isSyncing => _isSyncing;
@@ -26,9 +26,9 @@ class OfflineSyncProvider with ChangeNotifier {
     _updateConnectionStatus(result);
   }
 
-  void _updateConnectionStatus(ConnectivityResult result) {
+  void _updateConnectionStatus(List<ConnectivityResult> results) {
     final wasOnline = _isOnline;
-    _isOnline = result != ConnectivityResult.none;
+    _isOnline = results.contains(ConnectivityResult.mobile) || results.contains(ConnectivityResult.wifi);
     if (_isOnline) {
       _syncStatusMessage = "Connected. Ready to sync.";
       if (!wasOnline && _pendingChanges > 0) {

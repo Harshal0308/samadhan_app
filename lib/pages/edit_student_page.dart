@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:samadhan_app/providers/student_provider.dart';
@@ -45,61 +46,66 @@ class _EditStudentPageState extends State<EditStudentPage> {
     }
   }
 
-  Future<void> _updateStudent({bool isOnline = false}) async {
+  Future<void> _updateStudent() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
+      setState(() => _isLoading = true);
 
       final studentProvider = Provider.of<StudentProvider>(context, listen: false);
       final notificationProvider = Provider.of<NotificationProvider>(context, listen: false);
-      final offlineSyncProvider = Provider.of<OfflineSyncProvider>(context, listen: false);
+      final faceService = FaceRecognitionService();
+      
+      List<double>? newEmbedding;
+      final photo = _photoFiles.firstWhere((f) => f != null, orElse: () => null);
 
-      setState(() {
-        _isLoading = true;
-      });
+      if (photo != null) {
+        // If a new photo is uploaded, generate a new embedding
+        try {
+          final imageBytes = await photo.readAsBytes();
+          final image = img.decodeImage(imageBytes);
+
+          if (image != null) {
+            final faces = await faceService.detectFaces(image);
+            if (faces.length != 1) {
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please use a clear photo with exactly one face. ${faces.length} faces detected.'), backgroundColor: Colors.red));
+              setState(() => _isLoading = false);
+              return;
+            } else {
+              newEmbedding = faceService.getEmbedding(image, faces.first.boundingBox);
+            }
+          }
+        } catch (e) {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error processing new image: $e'), backgroundColor: Colors.red));
+          setState(() => _isLoading = false);
+          return;
+        }
+      }
 
       try {
+        // Create a new student object with updated fields
         final updatedStudent = Student(
           id: widget.student.id,
           name: _nameController.text,
           rollNo: _rollNoController.text,
           classBatch: _selectedClass!,
+          lessonsLearned: widget.student.lessonsLearned, // Preserve old lessons
+          testResults: widget.student.testResults, // Preserve old test results
+          embedding: newEmbedding ?? widget.student.embedding, // Use new embedding or keep old one
         );
 
         await studentProvider.updateStudent(updatedStudent);
-        offlineSyncProvider.addPendingChange();
 
-        final newTrainingPhotos = _photoFiles.where((f) => f != null).cast<File>().toList();
+        notificationProvider.addNotification(
+          title: 'Student Updated',
+          message: 'Student ${updatedStudent.name} has been updated successfully.',
+          type: 'success',
+        );
 
-        if (isOnline && newTrainingPhotos.isNotEmpty) {
-          final faceService = FaceRecognitionService();
-          final trainResponse = await faceService.trainFace(updatedStudent.id, updatedStudent.name, newTrainingPhotos);
-          if (trainResponse.containsKey('error')) {
-            notificationProvider.addNotification(
-              title: 'Student Updated (Retraining Failed)',
-              message: 'Student ${updatedStudent.name} updated, but face retraining failed: ${trainResponse['error']}',
-              type: 'alert',
-            );
-          } else {
-            notificationProvider.addNotification(
-              title: 'Student Updated & Retrained',
-              message: 'Student ${updatedStudent.name} updated and face retraining started successfully!',
-              type: 'success',
-            );
-          }
-        } else {
-           notificationProvider.addNotification(
-              title: 'Student Updated',
-              message: 'Student ${updatedStudent.name} details updated. Retraining will sync when online.',
-              type: 'info',
-            );
-        }
-        
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Student updated successfully!')),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Student updated successfully!')));
           Navigator.of(context).pop();
         }
+
       } catch (e) {
         notificationProvider.addNotification(
           title: 'Failed to Update Student',
@@ -107,11 +113,7 @@ class _EditStudentPageState extends State<EditStudentPage> {
           type: 'alert',
         );
       } finally {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
+        if (mounted) setState(() => _isLoading = false);
       }
     }
   }
@@ -252,26 +254,9 @@ class _EditStudentPageState extends State<EditStudentPage> {
               if (_isLoading)
                 const Center(child: CircularProgressIndicator())
               else
-                Consumer<OfflineSyncProvider>(
-                  builder: (context, syncProvider, child) {
-                    return Column(
-                      children: [
-                        ElevatedButton(
-                          onPressed: () => _updateStudent(isOnline: syncProvider.isOnline),
-                          child: const Text('UPDATE STUDENT', style: TextStyle(fontSize: 18)),
-                        ),
-                        if (!syncProvider.isOnline && _photoFiles.any((p) => p != null))
-                          const Padding(
-                            padding: EdgeInsets.only(top: 8.0),
-                            child: Text(
-                              'Face retraining requires an internet connection and will be synced later.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          ),
-                      ],
-                    );
-                  },
+                ElevatedButton(
+                  onPressed: _updateStudent,
+                  child: const Text('UPDATE STUDENT', style: TextStyle(fontSize: 18)),
                 ),
             ],
           ),

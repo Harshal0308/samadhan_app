@@ -23,7 +23,17 @@ class _ExportedReportsPageState extends State<ExportedReportsPage> {
   @override
   void initState() {
     super.initState();
-    _loadExportedFiles();
+    // Fetch volunteer and attendance reports first, then load exported files
+    final volunteerProvider = Provider.of<VolunteerProvider>(context, listen: false);
+    final attendanceProvider = Provider.of<AttendanceProvider>(context, listen: false);
+    
+    Future.wait([
+      volunteerProvider.fetchReports(),
+      attendanceProvider.fetchAttendanceRecords(),
+    ]).then((_) {
+      _loadExportedFiles();
+    });
+    
     // Default to last 30 days
     _selectedStartDate = DateTime.now().subtract(const Duration(days: 30));
     _selectedEndDate = DateTime.now();
@@ -88,7 +98,11 @@ class _ExportedReportsPageState extends State<ExportedReportsPage> {
     }
 
     try {
-      final path = await exportProvider.exportAttendanceToExcel(attendanceRecords); // Pass attendanceRecords
+      final path = await exportProvider.exportAttendanceToExcel(
+        attendanceRecords,
+        startDate: _selectedStartDate,
+        endDate: _selectedEndDate,
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Attendance report saved to $path')),
       );
@@ -110,22 +124,39 @@ class _ExportedReportsPageState extends State<ExportedReportsPage> {
     }
   }
 
-  Future<void> _generateVolunteerReport(VolunteerReport report) async {
+  Future<void> _generateVolunteerReport(List<VolunteerReport> reports) async {
     final exportProvider = Provider.of<ExportProvider>(context, listen: false);
     final notificationProvider = Provider.of<NotificationProvider>(context, listen: false);
     
+    print('DEBUG: _generateVolunteerReport called with ${reports.length} reports');
+    
     try {
-      final path = await exportProvider.exportVolunteerReportToPdf(report);
+      if (reports.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No reports to export.')),
+        );
+        return;
+      }
+      
+      final path = await exportProvider.exportVolunteerReportToPdf(
+        reports,
+        startDate: _selectedStartDate,
+        endDate: _selectedEndDate,
+      );
+      print('DEBUG: PDF generated successfully at $path');
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Volunteer report saved to $path')),
       );
       notificationProvider.addNotification(
         title: 'Volunteer Report Exported',
-        message: 'Volunteer report for ${report.volunteerName} exported successfully.',
+        message: 'Volunteer report for selected range exported successfully.',
         type: 'success',
       );
       _loadExportedFiles();
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('DEBUG: Error generating volunteer report: $e');
+      print('DEBUG: Stack trace: $stackTrace');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to generate volunteer report: $e')),
       );
@@ -187,22 +218,44 @@ class _ExportedReportsPageState extends State<ExportedReportsPage> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    final volunteerProvider = Provider.of<VolunteerProvider>(context, listen: false);
-                    if (volunteerProvider.reports.isNotEmpty) {
-                      _generateVolunteerReport(volunteerProvider.reports.first);
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('No volunteer reports available to export.')),
-                      );
-                    }
+                Consumer<VolunteerProvider>(
+                  builder: (context, volunteerProvider, child) {
+                    return ElevatedButton.icon(
+                      onPressed: () {
+                        if (_selectedStartDate == null || _selectedEndDate == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Please select a date range for the volunteer report.')),
+                          );
+                          return;
+                        }
+                        final reports = volunteerProvider.reports.where((report) {
+                          final reportDate = DateTime.fromMillisecondsSinceEpoch(report.id);
+                          final startDate = DateTime(_selectedStartDate!.year, _selectedStartDate!.month, _selectedStartDate!.day);
+                          final endDate = DateTime(_selectedEndDate!.year, _selectedEndDate!.month, _selectedEndDate!.day + 1);
+                          return !reportDate.isBefore(startDate) && reportDate.isBefore(endDate);
+                        }).toList();
+
+                        print('DEBUG: Total reports available: ${volunteerProvider.reports.length}');
+                        print('DEBUG: Reports in selected date range: ${reports.length}');
+                        for (var r in reports) {
+                          print('DEBUG: Report date: ${DateTime.fromMillisecondsSinceEpoch(r.id)}');
+                        }
+
+                        if (reports.isNotEmpty) {
+                          _generateVolunteerReport(reports);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('No volunteer reports available to export for the selected date range.')),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.picture_as_pdf),
+                      label: const Text('Generate Volunteer Report PDF'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 50),
+                      ),
+                    );
                   },
-                  icon: const Icon(Icons.picture_as_pdf),
-                  label: const Text('Generate Latest Volunteer PDF'),
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(double.infinity, 50),
-                  ),
                 ),
               ],
             ),
@@ -220,8 +273,8 @@ class _ExportedReportsPageState extends State<ExportedReportsPage> {
                 }
 
                 final files = snapshot.data!;
-                final attendanceFiles = files.where((f) => f.path.contains('attendance_report_')).toList();
-                final volunteerFiles = files.where((f) => f.path.contains('volunteer_report_')).toList();
+                final attendanceFiles = files.where((f) => f.path.contains('Attendance')).toList();
+                final volunteerFiles = files.where((f) => f.path.contains('VolunteerReport')).toList();
 
                 return ListView(
                   children: [

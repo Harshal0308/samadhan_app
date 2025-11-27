@@ -15,7 +15,11 @@ import 'package:samadhan_app/providers/event_provider.dart';
 import 'package:samadhan_app/providers/schedule_provider.dart';
 import 'package:samadhan_app/l10n/app_localizations.dart';
 
-void main() {
+import 'package:samadhan_app/services/face_recognition_service.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await FaceRecognitionService().loadModel();
   runApp(const MyApp());
 }
 

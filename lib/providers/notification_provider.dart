@@ -106,4 +106,10 @@ class NotificationProvider with ChangeNotifier {
     await _notificationStore.delete(db, finder: Finder(filter: Filter.byKey(notification.id)));
     await loadNotifications();
   }
+
+  Future<void> clearAllNotifications() async {
+    final db = await _dbService.database;
+    await _notificationStore.delete(db);
+    await loadNotifications();
+  }
 }

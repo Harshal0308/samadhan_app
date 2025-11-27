@@ -21,7 +21,7 @@ class ExportProvider {
     return directory.path;
   }
 
-  Future<String> exportAttendanceToExcel(List<AttendanceRecord> attendanceRecords) async {
+  Future<String> exportAttendanceToExcel(List<AttendanceRecord> attendanceRecords, {DateTime? startDate, DateTime? endDate}) async {
     final excel = Excel.createExcel();
     final sheet = excel[excel.getDefaultSheet()!];
 
@@ -73,7 +73,30 @@ class ExportProvider {
       sheet.insertRowIterables(row, rowIndex++);
     }
 
-    final path = '${await _getLocalPath()}/attendance_report_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+    // Generate filename based on date range
+    String filename = 'Attendance';
+    if (startDate != null && endDate != null) {
+      final monthStart = _getMonthName(startDate.month);
+      final dayStart = startDate.day;
+      final yearStart = startDate.year;
+      final monthEnd = _getMonthName(endDate.month);
+      final dayEnd = endDate.day;
+      final yearEnd = endDate.year;
+      
+      if (startDate.year == endDate.year && startDate.month == endDate.month && startDate.day == endDate.day) {
+        // Same day
+        filename = 'Attendance_${dayStart}_${monthStart}_$yearStart';
+      } else {
+        // Date range
+        filename = 'Attendance_${dayStart}_${monthStart}_${yearStart}_to_${dayEnd}_${monthEnd}_${yearEnd}';
+      }
+    } else {
+      // Fallback if dates not provided
+      final now = DateTime.now();
+      filename = 'Attendance_${now.day}_${_getMonthName(now.month)}_${now.year}';
+    }
+
+    final path = '${await _getLocalPath()}/${filename}.xlsx';
     final fileBytes = excel.save();
     if (fileBytes != null) {
       File(path)
@@ -84,53 +107,99 @@ class ExportProvider {
     throw Exception('Failed to save Excel file.');
   }
 
-  Future<String> exportVolunteerReportToPdf(VolunteerReport report) async {
+  Future<String> exportVolunteerReportToPdf(List<VolunteerReport> reports, {DateTime? startDate, DateTime? endDate}) async {
     final pdf = pw.Document();
+    final Map<int, Student> studentsMap = {for (var s in _studentProvider.students) s.id: s};
 
-    pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Header(
-                level: 0,
-                child: pw.Text(
-                  'Volunteer Daily Report',
-                  style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
+    for (var report in reports) {
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          build: (pw.Context context) {
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Header(
+                  level: 0,
+                  child: pw.Text(
+                    'Volunteer Daily Report',
+                    style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
+                  ),
                 ),
-              ),
-              pw.Text('Volunteer: ${report.volunteerName}'),
-              pw.Text('Class/Batch: ${report.classBatch}'),
-              pw.Text('In Time: ${report.inTime}, Out Time: ${report.outTime}'),
-              pw.Text('Activity Taught: ${report.activityTaught}'),
-              if (report.testConducted)
+                pw.Text('Date: ${DateTime.fromMillisecondsSinceEpoch(report.id).toIso8601String().substring(0, 10)}'),
+                pw.Text('Volunteer: ${report.volunteerName}'),
+                pw.Text('Class/Batch: ${report.classBatch}'),
+                pw.Text('In Time: ${report.inTime}, Out Time: ${report.outTime}'),
+                pw.Text('Activity Taught: ${report.activityTaught}'),
+                pw.SizedBox(height: 10),
+                pw.Header(level: 1, text: 'Selected Students'),
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Header(level: 1, text: 'Test Details'),
-                    pw.Text('Test Topic: ${report.testTopic ?? 'N/A'}'),
-                    pw.Text('Marks/Grade: ${report.marksGrade ?? 'N/A'}'),
-                  ],
+                  children: report.selectedStudents.map((studentId) {
+                    final studentName = studentsMap[studentId]?.name ?? 'Unknown Student ($studentId)';
+                    return pw.Text('• $studentName');
+                  }).toList(),
                 ),
-              pw.Header(level: 1, text: 'Selected Students'),
-              pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: report.selectedStudents.map((s) => pw.Text('• $s')).toList(),
-              ),
-            ],
-          );
-        },
-      ),
-    );
+                if (report.testConducted) ...[                  
+                  pw.SizedBox(height: 10),
+                  pw.Header(level: 1, text: 'Test Details'),
+                  pw.Text('Test Topic: ${report.testTopic ?? 'N/A'}'),
+                  pw.SizedBox(height: 10),
+                  pw.Header(level: 2, text: 'Students Who Took Test'),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: report.testStudents.map((studentId) {
+                      final studentName = studentsMap[studentId]?.name ?? 'Unknown Student ($studentId)';
+                      final marks = report.testMarks[studentId] ?? 'N/A';
+                      return pw.Text('• $studentName - Marks: $marks');
+                    }).toList(),
+                  ),
+                ]
+              ],
+            );
+          },
+        ),
+      );
+    }
 
-    final path = '${await _getLocalPath()}/volunteer_report_${DateTime.now().millisecondsSinceEpoch}.pdf';
+    // Generate filename based on date range
+    String filename = 'VolunteerReport';
+    if (startDate != null && endDate != null) {
+      final monthStart = _getMonthName(startDate.month);
+      final dayStart = startDate.day;
+      final yearStart = startDate.year;
+      final monthEnd = _getMonthName(endDate.month);
+      final dayEnd = endDate.day;
+      final yearEnd = endDate.year;
+      
+      if (startDate.year == endDate.year && startDate.month == endDate.month && startDate.day == endDate.day) {
+        // Same day
+        filename = 'VolunteerReport_${dayStart}_${monthStart}_$yearStart';
+      } else {
+        // Date range
+        filename = 'VolunteerReport_${dayStart}_${monthStart}_${yearStart}_to_${dayEnd}_${monthEnd}_${yearEnd}';
+      }
+    } else {
+      // Fallback if dates not provided
+      final now = DateTime.now();
+      filename = 'VolunteerReport_${now.day}_${_getMonthName(now.month)}_${now.year}';
+    }
+
+    final path = '${await _getLocalPath()}/${filename}.pdf';
     final file = File(path);
     await file.writeAsBytes(await pdf.save());
     return path;
   }
   
+  
+  String _getMonthName(int month) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return months[month - 1];
+  }
+
   Future<List<File>> getExportedFiles() async {
     final directory = Directory(await _getLocalPath());
     if (!await directory.exists()) {
@@ -138,7 +207,7 @@ class ExportProvider {
     }
     final files = directory.listSync().whereType<File>().where((file) {
       final fileName = file.path.split(Platform.pathSeparator).last;
-      return fileName.startsWith('attendance_report_') || fileName.startsWith('volunteer_report_');
+      return fileName.startsWith('Attendance') || fileName.startsWith('VolunteerReport');
     }).toList();
     files.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
     return files;

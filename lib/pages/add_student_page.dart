@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // Import for FilteringTextInputFormatter
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:samadhan_app/providers/student_provider.dart';
@@ -35,70 +36,60 @@ class _AddStudentPageState extends State<AddStudentPage> {
     }
   }
 
-  Future<void> _addStudentAndTrain({bool isOnline = false}) async {
+  Future<void> _addStudentAndTrain() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
+      setState(() => _isLoading = true);
 
       final studentProvider = Provider.of<StudentProvider>(context, listen: false);
       final notificationProvider = Provider.of<NotificationProvider>(context, listen: false);
-      final offlineSyncProvider = Provider.of<OfflineSyncProvider>(context, listen: false);
+      final faceService = FaceRecognitionService();
+      
+      List<double>? embedding;
+      final photo = _photoFiles.firstWhere((f) => f != null, orElse: () => null);
 
-      setState(() {
-        _isLoading = true;
-      });
+      if (photo != null) {
+        try {
+          final imageBytes = await photo.readAsBytes();
+          final image = img.decodeImage(imageBytes);
+
+          if (image != null) {
+            final faces = await faceService.detectFaces(image);
+            if (faces.length != 1) {
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please use a clear photo with exactly one face. ${faces.length} faces detected.'), backgroundColor: Colors.red));
+              setState(() => _isLoading = false);
+              return;
+            } else {
+              embedding = faceService.getEmbedding(image, faces.first.boundingBox);
+            }
+          }
+        } catch (e) {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error processing image: $e'), backgroundColor: Colors.red));
+          setState(() => _isLoading = false);
+          return;
+        }
+      }
 
       try {
         final newStudent = await studentProvider.addStudent(
           name: _nameController.text,
           rollNo: _rollNoController.text,
           classBatch: _selectedClass!,
+          embedding: embedding,
         );
 
         if (newStudent == null) {
-          // Handle duplicate roll number case
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('This roll number is already assigned in this class.'),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-          return; // Stop execution
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This roll number is already assigned in this class.'), backgroundColor: Colors.red));
+          return;
         }
 
-        offlineSyncProvider.addPendingChange();
+        notificationProvider.addNotification(
+          title: 'Student Added',
+          message: 'Student ${newStudent.name} has been added successfully.',
+          type: 'success',
+        );
 
-        final trainingPhotos = _photoFiles.where((f) => f != null).cast<File>().toList();
-
-        if (isOnline && trainingPhotos.isNotEmpty) {
-          final faceService = FaceRecognitionService();
-          final trainResponse = await faceService.trainFace(newStudent.id, newStudent.name, trainingPhotos);
-
-          if (trainResponse.containsKey('error')) {
-            notificationProvider.addNotification(
-              title: 'Student Added (Training Failed)',
-              message: 'Student ${newStudent.name} added, but face training failed: ${trainResponse['error']}',
-              type: 'alert',
-            );
-          } else {
-            notificationProvider.addNotification(
-              title: 'Student Added & Trained',
-              message: 'Student ${newStudent.name} added and face training started successfully!',
-              type: 'success',
-            );
-          }
-        } else {
-          notificationProvider.addNotification(
-            title: 'Student Added (Offline)',
-            message: 'Student ${newStudent.name} added. Face training will sync when online.',
-            type: 'warning',
-          );
-        }
-        
-        if (mounted) {
-          Navigator.pop(context);
-        }
+        if (mounted) Navigator.pop(context);
 
       } catch (e) {
         notificationProvider.addNotification(
@@ -107,11 +98,7 @@ class _AddStudentPageState extends State<AddStudentPage> {
           type: 'alert',
         );
       } finally {
-        if(mounted){
-          setState(() {
-            _isLoading = false;
-          });
-        }
+        if(mounted) setState(() => _isLoading = false);
       }
     }
   }
@@ -125,7 +112,6 @@ class _AddStudentPageState extends State<AddStudentPage> {
 
   @override
   Widget build(BuildContext context) {
-    final studentProvider = Provider.of<StudentProvider>(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -216,16 +202,6 @@ class _AddStudentPageState extends State<AddStudentPage> {
                     return 'Roll number must contain digits only';
                   }
 
-                  // Check unique roll number in selected class
-                  if (_selectedClass != null) {
-                    final studentsInClass = studentProvider.students
-                        .where((s) => s.classBatch == _selectedClass);
-
-                    if (studentsInClass.any((s) => s.rollNo == value)) {
-                      return 'This roll number is already assigned in this class';
-                    }
-                  }
-
                   return null;
                 },
               ),
@@ -264,26 +240,9 @@ class _AddStudentPageState extends State<AddStudentPage> {
               if (_isLoading)
                 const Center(child: CircularProgressIndicator())
               else
-                Consumer<OfflineSyncProvider>(
-                  builder: (context, syncProvider, child) {
-                    return Column(
-                      children: [
-                        ElevatedButton(
-                          onPressed: () => _addStudentAndTrain(isOnline: syncProvider.isOnline),
-                          child: Text(syncProvider.isOnline ? 'ADD STUDENT & TRAIN' : 'Add Student (Offline)', style: const TextStyle(fontSize: 18)),
-                        ),
-                        if (!syncProvider.isOnline)
-                          const Padding(
-                            padding: EdgeInsets.only(top: 8.0),
-                            child: Text(
-                              'Face training requires an internet connection and will be synced later.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          ),
-                      ],
-                    );
-                  },
+                ElevatedButton(
+                  onPressed: _addStudentAndTrain,
+                  child: const Text('ADD STUDENT', style: TextStyle(fontSize: 18)),
                 ),
             ],
           ),

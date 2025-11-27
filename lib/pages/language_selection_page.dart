@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:samadhan_app/pages/center_selection_page.dart';
+import 'package:samadhan_app/main.dart';
 import 'package:samadhan_app/providers/user_provider.dart';
 
 class LanguageSelectionPage extends StatefulWidget {

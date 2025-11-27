@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:samadhan_app/providers/student_provider.dart';
 import 'package:samadhan_app/providers/volunteer_provider.dart';
-import 'package:samadhan_app/providers/user_provider.dart';
 import 'package:intl/intl.dart';
+import 'package:samadhan_app/pages/volunteer_daily_report_page.dart'; // Import to use StudentSelectionSheet
 
 class EditVolunteerReportPage extends StatefulWidget {
   final VolunteerReport report;
@@ -17,22 +17,18 @@ class EditVolunteerReportPage extends StatefulWidget {
 class _EditVolunteerReportPageState extends State<EditVolunteerReportPage> {
   final _formKey = GlobalKey<FormState>();
   late String _volunteerName;
-  String? _selectedClassBatch;
-  late List<String> _classBatches;
   TimeOfDay? _inTime;
   TimeOfDay? _outTime;
   String? _activityTaught;
   bool _testConducted = false;
   String? _testTopic;
   String? _marksGrade;
-  List<String> _selectedStudents = [];
+  List<int> _selectedStudents = []; // Changed to List<int>
 
   @override
   void initState() {
     super.initState();
-    final studentProvider = Provider.of<StudentProvider>(context, listen: false);
     _volunteerName = widget.report.volunteerName;
-    _selectedClassBatch = widget.report.classBatch;
 
     // Robust parsing for _inTime
     try {
@@ -43,7 +39,6 @@ class _EditVolunteerReportPageState extends State<EditVolunteerReportPage> {
         final dateTime = DateFormat('h:mm a').parse(widget.report.inTime);
         _inTime = TimeOfDay(hour: dateTime.hour, minute: dateTime.minute);
       } catch (e2) {
-        print('Warning: Could not parse inTime string "${widget.report.inTime}". Error: $e2');
         _inTime = TimeOfDay.now(); // Fallback
       }
     }
@@ -57,7 +52,6 @@ class _EditVolunteerReportPageState extends State<EditVolunteerReportPage> {
         final dateTime = DateFormat('h:mm a').parse(widget.report.outTime);
         _outTime = TimeOfDay(hour: dateTime.hour, minute: dateTime.minute);
       } catch (e2) {
-        print('Warning: Could not parse outTime string "${widget.report.outTime}". Error: $e2');
         _outTime = TimeOfDay.now(); // Fallback
       }
     }
@@ -66,20 +60,7 @@ class _EditVolunteerReportPageState extends State<EditVolunteerReportPage> {
     _testConducted = widget.report.testConducted;
     _testTopic = widget.report.testTopic;
     _marksGrade = widget.report.marksGrade;
-    _selectedStudents = widget.report.selectedStudents;
-    // Collect all unique class batches from students
-    final Set<String> uniqueClassBatches = studentProvider.students.map((s) => s.classBatch).toSet();
-    
-    // Add 'All' as a general option
-    uniqueClassBatches.add('All');
-
-    // Add the current report's classBatch to ensure it's in the list
-    if (widget.report.classBatch != null && widget.report.classBatch.isNotEmpty) {
-      uniqueClassBatches.add(widget.report.classBatch);
-    }
-
-    _classBatches = uniqueClassBatches.toList();
-    _classBatches.sort(); // Optional: sort for better display
+    _selectedStudents = List<int>.from(widget.report.selectedStudents); // Ensure it's List<int>
   }
   
   Future<void> _selectTime(BuildContext context, bool isStartTime) async {
@@ -98,45 +79,37 @@ class _EditVolunteerReportPageState extends State<EditVolunteerReportPage> {
     }
   }
 
-  void _showMultiSelectStudentDialog() {
+  void _showStudentSelectionSheet() async {
     final studentProvider = Provider.of<StudentProvider>(context, listen: false);
-    final allStudents = studentProvider.students;
+    // Filter students by the report's classBatch
+    final studentsInReportClass = studentProvider.students
+        .where((s) => s.classBatch == widget.report.classBatch)
+        .toList();
 
-    showDialog(
+    final List<int>? result = await showModalBottomSheet<List<int>>(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Select Students'),
-          content: SingleChildScrollView(
-            child: ListBody(
-              children: allStudents
-                  .map((student) => CheckboxListTile(
-                        value: _selectedStudents.contains(student.name),
-                        title: Text(student.name),
-                        onChanged: (bool? isChecked) {
-                          setState(() {
-                            if (isChecked!) {
-                              _selectedStudents.add(student.name);
-                            } else {
-                              _selectedStudents.remove(student.name);
-                            }
-                          });
-                        },
-                      ))
-                  .toList(),
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('DONE'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
+      isScrollControlled: true,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.8,
+          maxChildSize: 0.9,
+          builder: (BuildContext context, ScrollController scrollController) {
+            return StudentSelectionSheet(
+              scrollController: scrollController,
+              allStudents: studentsInReportClass, // Pass only students from this report's class
+              initiallySelectedStudents: _selectedStudents,
+            );
+          },
         );
       },
     );
+
+    if (result != null) {
+      setState(() {
+        _selectedStudents = result;
+      });
+    }
   }
 
   Future<void> _updateReport() async {
@@ -148,7 +121,7 @@ class _EditVolunteerReportPageState extends State<EditVolunteerReportPage> {
         id: widget.report.id,
         volunteerName: _volunteerName,
         selectedStudents: _selectedStudents,
-        classBatch: _selectedClassBatch!,
+        classBatch: widget.report.classBatch, // Use the original classBatch
         inTime: _inTime!.format(context),
         outTime: _outTime!.format(context),
         activityTaught: _activityTaught!,
@@ -196,33 +169,17 @@ class _EditVolunteerReportPageState extends State<EditVolunteerReportPage> {
               ),
               const SizedBox(height: 16),
               ElevatedButton(
-                onPressed: _showMultiSelectStudentDialog,
+                onPressed: _showStudentSelectionSheet, // Call the new method
                 child: Text('Selected Students (${_selectedStudents.length})'),
               ),
               const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
+              TextFormField(
+                initialValue: widget.report.classBatch,
+                readOnly: true,
                 decoration: InputDecoration(
                   labelText: 'Class / Batch',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                value: _selectedClassBatch,
-                onChanged: (String? newValue) {
-                  setState(() {
-                    _selectedClassBatch = newValue;
-                  });
-                },
-                items: _classBatches.map<DropdownMenuItem<String>>((String value) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(value),
-                  );
-                }).toList(),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please select a class/batch';
-                  }
-                  return null;
-                },
               ),
               const SizedBox(height: 16),
               Row(
@@ -331,7 +288,6 @@ class _EditVolunteerReportPageState extends State<EditVolunteerReportPage> {
                 ElevatedButton(
                   onPressed: () {
                     // TODO: Implement multi-select for students who attempted
-                    print('Select Students who attempted button pressed');
                   },
                   child: const Text('Select Students Who Attempted'),
                 ),
