@@ -71,7 +71,7 @@ class _TakeAttendancePageState extends State<TakeAttendancePage> {
         } else {
           List<String> recognizedThisImage = [];
           for (var face in detectedFaces) {
-            final embedding = _faceRecognitionService.getEmbedding(image, face.boundingBox);
+            final embedding = _faceRecognitionService.getEmbeddingWithAlignment(image, face);
             if (embedding != null) {
               final bestMatch = _faceRecognitionService.findBestMatch(embedding, studentsWithEmbeddings, 0.8); // Using a threshold of 0.8
               if (bestMatch != null && !recognizedThisImage.contains(bestMatch.name)) {

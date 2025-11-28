@@ -56,29 +56,45 @@ class _EditStudentPageState extends State<EditStudentPage> {
       final faceService = FaceRecognitionService();
       
       List<double>? newEmbedding;
-      final photo = _photoFiles.firstWhere((f) => f != null, orElse: () => null);
+      List<List<double>> collectedEmbeddings = [];
+      String photoProcessingErrors = '';
 
-      if (photo != null) {
-        // If a new photo is uploaded, generate a new embedding
+      // Process all newly uploaded photos
+      for (final photo in _photoFiles.where((f) => f != null)) {
         try {
-          final imageBytes = await photo.readAsBytes();
+          final imageBytes = await photo!.readAsBytes();
           final image = img.decodeImage(imageBytes);
 
           if (image != null) {
             final faces = await faceService.detectFaces(image);
-            if (faces.length != 1) {
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please use a clear photo with exactly one face. ${faces.length} faces detected.'), backgroundColor: Colors.red));
-              setState(() => _isLoading = false);
-              return;
+            if (faces.isEmpty) {
+              photoProcessingErrors += 'A photo was skipped: No face detected.\\n';
             } else {
-              newEmbedding = faceService.getEmbedding(image, faces.first.boundingBox);
+              if (faces.length > 1) {
+                photoProcessingErrors += 'A photo had multiple faces, used the largest one.\\n';
+                faces.sort((a, b) => (b.boundingBox.width * b.boundingBox.height).compareTo(a.boundingBox.width * a.boundingBox.height));
+              }
+              final largestFace = faces.first;
+              final currentEmbedding = faceService.getEmbeddingWithAlignment(image, largestFace);
+              if (currentEmbedding != null) {
+                collectedEmbeddings.add(currentEmbedding);
+              }
             }
           }
         } catch (e) {
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error processing new image: $e'), backgroundColor: Colors.red));
-          setState(() => _isLoading = false);
-          return;
+           photoProcessingErrors += 'Error processing a photo: $e\\n';
         }
+      }
+
+      if (collectedEmbeddings.isNotEmpty) {
+        newEmbedding = faceService.averageEmbeddings(collectedEmbeddings);
+        if (photoProcessingErrors.isNotEmpty && mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Generated new embedding. Some photos had issues: $photoProcessingErrors'), backgroundColor: Colors.orange));
+        }
+      } else if (photoProcessingErrors.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not generate new embedding. Details: $photoProcessingErrors'), backgroundColor: Colors.red));
+        setState(() => _isLoading = false);
+        return;
       }
 
       try {

@@ -1,13 +1,15 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Import for FilteringTextInputFormatter
-import 'package:image/image.dart' as img;
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:samadhan_app/providers/student_provider.dart';
 import 'package:samadhan_app/services/face_recognition_service.dart';
 import 'package:samadhan_app/providers/notification_provider.dart';
-import 'package:samadhan_app/providers/offline_sync_provider.dart';
+import 'package:samadhan_app/pages/image_cropper_page.dart';
+import 'package:image/image.dart' as img;
+
 
 class AddStudentPage extends StatefulWidget {
   const AddStudentPage({super.key});
@@ -28,11 +30,27 @@ class _AddStudentPageState extends State<AddStudentPage> {
   bool _isLoading = false;
 
   Future<void> _pickImage(int index) async {
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
-    if (image != null) {
-      setState(() {
-        _photoFiles[index] = File(image.path);
-      });
+    final XFile? pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null && mounted) {
+      // Navigate to the new full-screen cropper page
+      final img.Image? croppedImage = await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => ImageCropperPage(
+            imageFile: File(pickedFile.path),
+          ),
+        ),
+      );
+
+      if (croppedImage != null) {
+        final tempDir = await getTemporaryDirectory();
+        final path = '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final croppedFile = await File(path).writeAsBytes(img.encodeJpg(croppedImage));
+
+        setState(() {
+          _photoFiles[index] = croppedFile;
+        });
+      }
     }
   }
 
@@ -45,29 +63,50 @@ class _AddStudentPageState extends State<AddStudentPage> {
       final notificationProvider = Provider.of<NotificationProvider>(context, listen: false);
       final faceService = FaceRecognitionService();
       
-      List<double>? embedding;
-      final photo = _photoFiles.firstWhere((f) => f != null, orElse: () => null);
+      List<double>? finalEmbedding;
+      List<List<double>> collectedEmbeddings = [];
+      String photoProcessingErrors = '';
+      int processedPhotosCount = 0;
 
-      if (photo != null) {
-        try {
-          final imageBytes = await photo.readAsBytes();
-          final image = img.decodeImage(imageBytes);
+      for (int i = 0; i < _photoFiles.length; i++) {
+        final croppedPhotoFile = _photoFiles[i];
+        if (croppedPhotoFile != null) {
+          processedPhotosCount++;
+          try {
+            final currentEmbedding = await faceService.getEmbeddingForCroppedImage(croppedPhotoFile);
 
-          if (image != null) {
-            final faces = await faceService.detectFaces(image);
-            if (faces.length != 1) {
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Please use a clear photo with exactly one face. ${faces.length} faces detected.'), backgroundColor: Colors.red));
-              setState(() => _isLoading = false);
-              return;
+            if (currentEmbedding != null) {
+              collectedEmbeddings.add(currentEmbedding);
             } else {
-              embedding = faceService.getEmbedding(image, faces.first.boundingBox);
+              photoProcessingErrors += 'Photo ${i + 1}: Failed to generate embedding from cropped image.\n';
             }
+          } catch (e) {
+            photoProcessingErrors += 'Photo ${i + 1}: Error processing cropped image ($e).\n';
           }
-        } catch (e) {
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error processing image: $e'), backgroundColor: Colors.red));
-          setState(() => _isLoading = false);
-          return;
         }
+      }
+
+      if (processedPhotosCount == 0) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please upload and crop at least one photo.'), backgroundColor: Colors.red));
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      if (collectedEmbeddings.isEmpty) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to generate any valid face embeddings. Details:\n$photoProcessingErrors'), backgroundColor: Colors.red));
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      finalEmbedding = faceService.averageEmbeddings(collectedEmbeddings);
+      if (finalEmbedding == null) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to average face embeddings.'), backgroundColor: Colors.red));
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      if (photoProcessingErrors.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Some cropped photos had issues. Final embedding generated from valid photos. Details:\n$photoProcessingErrors'), backgroundColor: Colors.orange));
       }
 
       try {
@@ -75,7 +114,7 @@ class _AddStudentPageState extends State<AddStudentPage> {
           name: _nameController.text,
           rollNo: _rollNoController.text,
           classBatch: _selectedClass!,
-          embedding: embedding,
+          embedding: finalEmbedding,
         );
 
         if (newStudent == null) {
@@ -112,16 +151,9 @@ class _AddStudentPageState extends State<AddStudentPage> {
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Add New Student'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.pop(context);
-          },
-        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -136,19 +168,15 @@ class _AddStudentPageState extends State<AddStudentPage> {
                   labelText: 'Student Name',
                 ),
                 inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s]')), // Allow letters and spaces
+                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s]')),
                 ],
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter student name';
                   }
-
-                  // Only letters and spaces allowed
-                  final nameRegex = RegExp(r'^[a-zA-Z ]+$');
-                  if (!nameRegex.hasMatch(value)) {
-                    return 'Only letters and spaces allowed';
+                  if (!RegExp(r'^[a-zA-Z ]+$').hasMatch(value)) {
+                    return 'Only letters and spaces are allowed';
                   }
-
                   return null;
                 },
               ),
@@ -162,8 +190,6 @@ class _AddStudentPageState extends State<AddStudentPage> {
                   setState(() {
                     _selectedClass = newValue;
                   });
-                  // Trigger validation for other fields when class changes
-                  _formKey.currentState?.validate();
                 },
                 items: _classes.map<DropdownMenuItem<String>>((String value) {
                   return DropdownMenuItem<String>(
@@ -171,12 +197,7 @@ class _AddStudentPageState extends State<AddStudentPage> {
                     child: Text(value),
                   );
                 }).toList(),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please select a class';
-                  }
-                  return null;
-                },
+                validator: (value) => value == null ? 'Please select a class' : null,
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -185,23 +206,11 @@ class _AddStudentPageState extends State<AddStudentPage> {
                   labelText: 'Roll Number',
                 ),
                 keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly, // Allow only digits
-                ],
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Please enter roll number';
                   }
-
-                  if (value.contains(' ')) {
-                    return 'Roll number cannot contain spaces';
-                  }
-
-                  final digitRegex = RegExp(r'^[0-9]+$');
-                  if (!digitRegex.hasMatch(value)) {
-                    return 'Roll number must contain digits only';
-                  }
-
                   return null;
                 },
               ),
